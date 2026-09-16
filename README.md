@@ -82,11 +82,23 @@ docker run -d --name sun-moon-app-server --network host --memory=384m \
   --restart unless-stopped sun-moon-app-server
 ```
 
-**공개입니다.** 손님 휴대폰이 LTE로 들어오므로 LAN 전용이 될 수 없습니다:
+### 노출 범위 — 지금은 LAN 전용, 나중에 공개
 
 ```bash
-sudo ufw allow 8086/tcp
+# 지금 (2026-09-16): 개발 중이라 LAN 안에서만
+sudo ufw allow from 192.168.0.0/24 to any port 8086 proto tcp
 ```
+
+> ⚠️ **테이블 QR이 실제로 나가는 날 이 포트를 외부에 열어야 합니다.**
+> 손님 휴대폰은 매장 wifi가 아니라 LTE로 들어옵니다. 그리고 이건 잊기
+> 딱 좋은 종류의 일입니다 — 개발하는 동안은 LAN에서 전부 잘 되니까
+> 아무 증상이 없습니다.
+>
+> **작업 PC가 같은 LAN에 있으면 확인도 안 됩니다.** 공인 IP로 호출해도
+> 공유기가 내부로 되돌려 보내서(NAT loopback) 200이 나옵니다. LAN 전용인
+> BO(8080)도 공인 IP로 200이 나오는 것으로 확인했고, nginx 접근 로그에
+> 작업 PC가 `192.168.0.1`로 찍힙니다. **외부 접근 여부는 LTE 켠
+> 휴대폰처럼 진짜 바깥에서 확인해야 합니다.**
 
 ## 규칙
 

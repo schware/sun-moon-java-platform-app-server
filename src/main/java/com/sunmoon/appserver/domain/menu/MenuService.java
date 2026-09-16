@@ -1,5 +1,6 @@
 package com.sunmoon.appserver.domain.menu;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -24,6 +25,11 @@ public class MenuService {
     private final MenuRepository repository;
     private final Clock clock;
 
+    // 생성자가 둘이면 Spring이 어느 것을 쓸지 고르지 못하고, 실패는 컴파일이
+    // 아니라 **기동 시점**에 납니다. Order의 BusinessDayService가 정확히
+    // 이것으로 한 번 죽었고, 이 서비스도 첫 배포에서 같은 이유로 죽었습니다.
+    // 이 어노테이션은 장식이 아니라 동작에 필요한 것입니다.
+    @Autowired
     public MenuService(MenuRepository repository) {
         this(repository, Clock.system(STORE_ZONE));
     }

@@ -1,0 +1,23 @@
+server:
+  port: 8086
+  servlet:
+    context-path: /app-server
+
+spring:
+  application:
+    name: sun-moon-java-platform-app-server
+
+# 아직 데이터베이스가 없습니다. APP-SERVER는 App·QR 마스터를 소유할
+# 예정이지만, 그 표의 모양이 아직 정해지지 않았습니다 — 빈 데이터베이스를
+# 미리 만들어 두는 것보다 첫 표가 생길 때 함께 붙이는 쪽이 낫습니다.
+# BO 마스터(메뉴·테이블·공통코드)는 이 서버가 소유하지 않고 읽기만 하며,
+# 그것은 postgres_fdw 뷰로 옵니다 — umbrella docs/adr/0008.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info
+  endpoint:
+    health:
+      show-details: always

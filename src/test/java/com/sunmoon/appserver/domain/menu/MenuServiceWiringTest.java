@@ -22,6 +22,7 @@ class MenuServiceWiringTest {
     void springCanConstructTheService() {
         new ApplicationContextRunner()
                 .withBean(MenuRepository.class, () -> mock(MenuRepository.class))
+                .withBean(OrderQueue.class, () -> mock(OrderQueue.class))
                 .withBean(MenuService.class)
                 .run(context -> assertThat(context).hasNotFailed()
                         .hasSingleBean(MenuService.class));

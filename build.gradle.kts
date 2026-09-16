@@ -22,9 +22,10 @@ repositories {
 // docs/adr/0007. delivery를 본으로 만들었습니다(order는 예외라 복사하면
 // 안 됩니다 — docs/CONVENTIONS §4).
 //
-// persistence starter가 아직 없습니다. App·QR 마스터의 표가 정해지면 그때
-// starter-jdbc와 postgresql을 붙입니다. 지금 선언해 두면 datasource URL이
-// 없어 기동 자체가 실패합니다.
+// starter-jdbc는 2026-09-16에 붙었습니다. App·QR 마스터 표 때문이 아니라
+// BO 마스터를 읽는 postgres_fdw 뷰를 담을 데이터베이스가 필요해서입니다 —
+// 외부 테이블은 어떤 데이터베이스 안에 있어야 합니다 (ADR-0008).
+// 자기 표는 아직 없습니다.
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web") {
         exclude(group = "org.springframework.boot", module = "spring-boot-starter-tomcat")
@@ -32,6 +33,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-jetty")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    runtimeOnly("org.postgresql:postgresql")
 
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")

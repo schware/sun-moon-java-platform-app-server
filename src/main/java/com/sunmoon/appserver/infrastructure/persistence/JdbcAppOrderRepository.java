@@ -184,6 +184,53 @@ public class JdbcAppOrderRepository implements AppOrderRepository {
     }
 
     /**
+     * 결제 한 건.
+     *
+     * <p>{@code ON CONFLICT DO NOTHING} 인 것은 멱등성 때문입니다.
+     * 같은 요청이 재시도로 두 번 들어오면 주문은 하나인데(§4.4.6)
+     * 결제가 둘이 될 수 있고, 그러면 손님이 두 번 낸 것으로 보입니다.
+     */
+    @Override
+    public void savePayment(long appOrderId, String method, java.math.BigDecimal amount,
+                            String status, String approvalRef) {
+        jdbcTemplate.update("""
+                INSERT INTO app_order_payment
+                  (app_order_id, payment_seq, payment_type, payment_amount,
+                   payment_status, approval_ref, paid_at)
+                VALUES (?, 1, ?, ?, ?, ?, now())
+                ON CONFLICT (app_order_id, payment_seq) DO NOTHING
+                """, appOrderId, method, amount, status, approvalRef);
+    }
+
+    @Override
+    public java.util.Optional<String> unrefundedApprovalOf(long appOrderId) {
+        return jdbcTemplate.query("""
+                SELECT approval_ref FROM app_order_payment
+                 WHERE app_order_id = ? AND payment_status = 'APPROVED'
+                """, (rs, n) -> rs.getString("approval_ref"), appOrderId)
+                .stream().findFirst();
+    }
+
+    /**
+     * 돌려줬습니다.
+     *
+     * <p>승인된 건만 바꿉니다 — 애초에 거절된 결제를 환불로 만들면
+     * 갚은 적 없는 돈이 장부에 생깁니다.
+     *
+     * <p>승인번호를 <b>지우지 않습니다</b>. 환불번호를 뒤에 붙입니다 —
+     * "무엇을 돌려준 것인지"가 없으면 정산에서 짝을 못 이룹니다.
+     */
+    @Override
+    public void markRefunded(long appOrderId, String refundNo) {
+        jdbcTemplate.update("""
+                UPDATE app_order_payment
+                   SET payment_status = 'REFUNDED',
+                       approval_ref = approval_ref || ' / ' || ?
+                 WHERE app_order_id = ? AND payment_status = 'APPROVED'
+                """, refundNo, appOrderId);
+    }
+
+    /**
      * 조건을 SQL로 쌓습니다. 전부 받아서 자바에서 거르면, 매장이 늘어난
      * 날 한 매장을 보려고 전 매장의 주문을 실어 나르게 됩니다.
      */

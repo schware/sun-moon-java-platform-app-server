@@ -60,4 +60,36 @@ public interface AppOrderRepository {
      * 고를 수 있어야 해서입니다.
      */
     List<AppOrder> findByDay(String storeId, LocalDate businessDate, OrderChannel channel);
+
+    /**
+     * 결제 한 건을 적습니다 (§4.4.2 Payment, §4.10).
+     *
+     * <p>주문 한 건에 결제도 한 건입니다. 여러 수단으로 나눠 내는 것은
+     * POS 매출에는 이미 있지만(TR Payment 가 여러 줄) 손님 채널에는
+     * 아직 없습니다 — 그래서 {@code payment_seq} 가 늘 1입니다.
+     */
+    void savePayment(long appOrderId, String method, java.math.BigDecimal amount,
+                     String status, String approvalRef);
+
+    /**
+     * 돌려줬습니다 (§4.10).
+     *
+     * <p>썬앤문페이는 가상이지만 <b>현금과 같은 개념</b>이라 실제로
+     * 돌려줍니다. 환불번호를 함께 적는 이유: 무엇을 되돌린 것인지
+     * 가리키는 값이 없으면 정산에서 "받은 것"과 "돌려준 것"이 짝을
+     * 못 이룹니다.
+     *
+     * <p>{@code APPROVED} 인 건만 바뀝니다 — 애초에 거절된 결제를
+     * 환불로 만들면 갚은 적 없는 돈이 장부에 생깁니다.
+     */
+    void markRefunded(long appOrderId, String refundNo);
+
+    /**
+     * 아직 돌려주지 않은 승인번호. 이미 환불했거나 결제가 없으면 빈 값입니다.
+     *
+     * <p>{@code APPROVED} 인 것만 돌려줍니다 — 이 조건이 <b>두 번 환불을
+     * 막습니다</b>. 손님이 취소를 두 번 누르면 두 번 돌려줄 수도 있는데,
+     * 가상 결제라도 그건 장부가 안 맞는 일입니다.
+     */
+    java.util.Optional<String> unrefundedApprovalOf(long appOrderId);
 }

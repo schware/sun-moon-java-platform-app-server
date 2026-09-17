@@ -41,6 +41,7 @@ class AppOrderServiceTest {
     private FakeTables tables;
     private FakeBusinessDays days;
     private FakeOms oms;
+    private FakePay pay;
     private AppOrderService service;
 
     @BeforeEach
@@ -50,11 +51,12 @@ class AppOrderServiceTest {
         tables = new FakeTables();
         days = new FakeBusinessDays();
         oms = new FakeOms();
+        pay = new FakePay();
         service = new AppOrderService(
                 orders,
                 new MenuService(menus, new FakeQueue()),
                 new TableEntryService(tables, days),
-                days, oms, new ObjectMapper());
+                days, oms, pay, new ObjectMapper());
     }
 
     private static PlaceAppOrder request(String requestId) {
@@ -160,6 +162,101 @@ class AppOrderServiceTest {
         // 번호를 태우지 않습니다 — 거절된 주문에 번호가 붙으면 그날
         // 번호가 구멍 난 채로 이어집니다.
         assertThat(orders.seqCalls).isZero();
+    }
+
+    /**
+     * <b>결제는 OMS로 가기 전입니다</b> (§4.10).
+     *
+     * <p>순서가 요점입니다. 매장이 만들기 시작한 뒤에 결제가 실패하면
+     * 음식은 이미 나가 있습니다. 지금은 무조건 승인이라 차이가 없지만,
+     * 진짜 PG가 붙는 날 이 순서가 이미 맞아 있어야 합니다.
+     */
+    @Test
+    void paymentHappensBeforeTheStoreIsTold() {
+        service.place(request("req-1"));
+
+        assertThat(pay.approvedOrders).hasSize(1);
+        assertThat(orders.payments).hasSize(1);
+        assertThat(orders.payments.get(0).status()).isEqualTo("APPROVED");
+        // 승인번호가 비어 있으면 영수증도 정산도 그 거래를 못 가리킵니다.
+        assertThat(orders.payments.get(0).approvalRef()).isNotBlank();
+    }
+
+    /** 결제가 거절되면 OMS로 <b>가지 않습니다</b> — 돈이 안 된 주문을 매장이 만들면 안 됩니다. */
+    @Test
+    void aRefusedPaymentNeverReachesTheStore() {
+        pay.approve = false;
+
+        AppOrderService.Result result = service.place(request("req-1"));
+
+        assertThat(result.refusal()).isEqualTo(OrderRefusal.PAYMENT_REFUSED);
+        assertThat(result.refusal().status()).isEqualTo(402);
+        assertThat(oms.calls).isZero();
+        // 원장에는 남습니다 — 손님에게는 그것도 일어난 일입니다.
+        assertThat(orders.saved).hasSize(1);
+        assertThat(orders.statuses).contains(AppOrderStatus.PAYMENT_FAILED);
+    }
+
+    /**
+     * <b>돈은 받았는데 주문이 매장에 못 갔으면 돌려줍니다.</b>
+     *
+     * <p>썬앤문페이는 가상이지만 현금과 같은 개념입니다 — 받았으면
+     * 돌려줄 수 있어야 합니다. 안 돌려주면 손님은 돈을 냈고 음식은 없는
+     * 상태로 남고, 그걸 알아채는 길은 손님의 전화뿐입니다.
+     */
+    @Test
+    void moneyTakenButTheOrderNeverArrivedIsGivenBack() {
+        oms.answer = OmsGateway.Answer.rejected("마감한 매장입니다");
+
+        service.place(request("req-1"));
+
+        assertThat(pay.refunded).containsExactly("SMP-TEST-000001");
+        assertThat(orders.refunds).hasSize(1);
+    }
+
+    /** 손님이 취소해도 돌려줍니다 (§5.2). */
+    @Test
+    void cancellingGivesTheMoneyBack() {
+        AppOrder placed = service.place(request("req-1")).order();
+
+        service.cancel(placed.id());
+
+        assertThat(pay.refunded).hasSize(1);
+        assertThat(orders.refunds).hasSize(1);
+    }
+
+    /**
+     * 취소를 두 번 눌러도 <b>한 번만</b> 돌려줍니다.
+     *
+     * <p>저장소가 아직 안 돌려준 것만 찾아 주므로 두 번째는 돌려줄
+     * 것이 없습니다. 가상 결제라도 두 번 돌려주면 장부가 안 맞습니다.
+     */
+    @Test
+    void cancellingTwiceRefundsOnce() {
+        AppOrder placed = service.place(request("req-1")).order();
+
+        service.cancel(placed.id());
+        service.cancel(placed.id());
+
+        assertThat(pay.refunded).hasSize(1);
+    }
+
+    /**
+     * 환불에 실패하면 결제는 <b>승인 상태로 남습니다</b>.
+     *
+     * <p>그게 맞습니다: 돈이 아직 우리 쪽에 있다는 뜻이고, 갚을 것이
+     * 있다는 사실이 장부에 남아야 합니다. "환불했다"고 적고 실패하면
+     * 갚을 것이 조용히 사라집니다.
+     */
+    @Test
+    void aFailedRefundLeavesTheDebtOnTheBooks() {
+        pay.refundWorks = false;
+        oms.answer = OmsGateway.Answer.rejected("마감한 매장입니다");
+
+        service.place(request("req-1"));
+
+        assertThat(orders.refunds).isEmpty();
+        assertThat(orders.payments.get(0).status()).isEqualTo("APPROVED");
     }
 
     /**
@@ -317,6 +414,13 @@ class AppOrderServiceTest {
         private final List<String> requests = new ArrayList<>();
         private final List<AppOrder> saved = new ArrayList<>();
         private final List<AppOrderStatus> statuses = new ArrayList<>();
+        /** 결제 한 줄. 실제 저장소의 app_order_payment 를 흉내 냅니다. */
+        private final List<Payment> payments = new ArrayList<>();
+        private final List<Long> refunds = new ArrayList<>();
+
+        record Payment(long orderId, String method, java.math.BigDecimal amount,
+                       String status, String approvalRef) {
+        }
         private int seq;
         private int seqCalls;
 
@@ -385,6 +489,33 @@ class AppOrderServiceTest {
         }
 
         @Override
+        public void savePayment(long appOrderId, String method, java.math.BigDecimal amount,
+                                String status, String approvalRef) {
+            payments.add(new Payment(appOrderId, method, amount, status, approvalRef));
+        }
+
+        /**
+         * 아직 안 돌려준 승인번호. 이 조건이 <b>두 번 환불을 막습니다</b> —
+         * 실제 저장소의 {@code payment_status = 'APPROVED'} 와 같은 규칙입니다.
+         */
+        @Override
+        public java.util.Optional<String> unrefundedApprovalOf(long appOrderId) {
+            return payments.stream()
+                    .filter(p -> p.orderId() == appOrderId && "APPROVED".equals(p.status()))
+                    .map(Payment::approvalRef)
+                    .findFirst();
+        }
+
+        @Override
+        public void markRefunded(long appOrderId, String refundNo) {
+            refunds.add(appOrderId);
+            payments.replaceAll(p -> p.orderId() == appOrderId && "APPROVED".equals(p.status())
+                    ? new Payment(p.orderId(), p.method(), p.amount(), "REFUNDED",
+                            p.approvalRef() + " / " + refundNo)
+                    : p);
+        }
+
+        @Override
         public List<AppOrder> findByDay(String storeId, LocalDate businessDate, OrderChannel channel) {
             return saved.stream()
                     .filter(o -> storeId == null || o.storeId().equals(storeId))
@@ -440,6 +571,37 @@ class AppOrderServiceTest {
         @Override
         public BusinessDayStatus statusOf(String storeId) {
             return open ? new BusinessDayStatus(true, DAY.toString()) : BusinessDayStatus.closed();
+        }
+    }
+
+    /** 무조건 승인하는 썬앤문페이 — 거절도 시험할 수 있게 스위치를 둡니다. */
+    private static final class FakePay
+            implements com.sunmoon.appserver.domain.payment.PaymentGateway {
+        private boolean approve = true;
+        private boolean refundWorks = true;
+        private final List<AppOrder> approvedOrders = new ArrayList<>();
+        private final List<String> refunded = new ArrayList<>();
+
+        @Override
+        public Approval approve(AppOrder order) {
+            if (!approve) {
+                return Approval.refused(
+                        com.sunmoon.appserver.domain.payment.PaymentMethod.SUNMOON_PAY,
+                        "잔액이 부족합니다");
+            }
+            approvedOrders.add(order);
+            return Approval.approved(
+                    com.sunmoon.appserver.domain.payment.PaymentMethod.SUNMOON_PAY,
+                    "SMP-TEST-000001");
+        }
+
+        @Override
+        public Refund refund(AppOrder order, String approvalNo, String reason) {
+            if (!refundWorks) {
+                return Refund.failed("돌려주지 못했습니다");
+            }
+            refunded.add(approvalNo);
+            return Refund.done("SMPR-TEST-000001");
         }
     }
 

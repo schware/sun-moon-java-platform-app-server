@@ -47,10 +47,21 @@ public class AppOrderService {
     private final TableEntryService entries;
     private final BusinessDays businessDays;
     private final OmsGateway oms;
+    /**
+     * 결제 (§4.10). 지금은 무조건 승인하는 썬앤문페이 하나입니다.
+     *
+     * <p>인터페이스를 지금 두는 이유: 승인이 거절될 수 있다는 사실이
+     * 흐름에 들어가 있어야, 진짜 PG를 붙이는 날 주문 흐름을 다시 짜지
+     * 않습니다. 결제는 "나중에 끼워 넣기"가 제일 비싼 자리입니다.
+     */
+    private final com.sunmoon.appserver.domain.payment.PaymentGateway payments;
     private final ObjectMapper objectMapper;
 
     public AppOrderService(AppOrderRepository orders, MenuService menus, TableEntryService entries,
-                           BusinessDays businessDays, OmsGateway oms, ObjectMapper objectMapper) {
+                           BusinessDays businessDays, OmsGateway oms,
+                           com.sunmoon.appserver.domain.payment.PaymentGateway payments,
+                           ObjectMapper objectMapper) {
+        this.payments = payments;
         this.orders = orders;
         this.menus = menus;
         this.entries = entries;
@@ -132,6 +143,7 @@ public class AppOrderService {
         if (order.omsOrderNo() == null) {
             // OMS에 넘어가지도 않은 주문입니다. 매장에 일감이 없으므로
             // 물어볼 곳도 없고, 원장에서 바로 닫습니다.
+            refundIfPaid(order, "주문 취소");
             orders.changeStatus(order.id(), AppOrderStatus.CANCELLED, "APP");
             return Result.of(orders.find(id).orElse(order));
         }
@@ -142,8 +154,24 @@ public class AppOrderService {
                     answer.reachable() ? OrderRefusal.CANCEL_REFUSED : OrderRefusal.OMS_UNREACHABLE,
                     answer.message());
         }
+        // **취소했으면 돌려줍니다.** 매장이 취소를 받아들인 뒤에
+        // 돌려주는 순서인 것이 중요합니다 — 먼저 돌려주고 매장이
+        // 거절하면, 만들고 있는 음식의 돈이 없어집니다.
+        refundIfPaid(order, "손님 취소");
         orders.changeStatus(order.id(), AppOrderStatus.CANCELLED, "OMS");
         return Result.of(orders.find(id).orElse(order));
+    }
+
+    /**
+     * 아직 안 돌려준 결제가 있으면 돌려줍니다.
+     *
+     * <p>저장소가 {@code APPROVED} 인 것만 찾아 주므로 <b>두 번 돌려주지
+     * 않습니다</b> — 손님이 취소를 두 번 누르는 것은 흔한 일이고, 가상
+     * 결제라도 두 번 돌려주면 장부가 안 맞습니다.
+     */
+    private void refundIfPaid(AppOrder order, String reason) {
+        orders.unrefundedApprovalOf(order.id())
+                .ifPresent(approvalNo -> refund(order, approvalNo, reason));
     }
 
     public Result place(PlaceAppOrder request) {
@@ -166,6 +194,24 @@ public class AppOrderService {
                     .orElseGet(() -> Result.refused(OrderRefusal.OMS_UNREACHABLE));
         }
         return placeNew(logId.get(), requestId, request);
+    }
+
+    /**
+     * 돌려줍니다 — 그리고 <b>못 돌려준 것도 남깁니다</b>.
+     *
+     * <p>환불이 실패하면 결제는 {@code APPROVED} 로 남습니다. 그게
+     * 맞습니다: 돈이 아직 우리 쪽에 있다는 뜻이고, 갚을 것이 있다는
+     * 사실이 장부에 남아야 합니다. "환불했다"고 적고 실패하면 갚을
+     * 것이 조용히 사라집니다.
+     */
+    private void refund(AppOrder order, String approvalNo, String reason) {
+        var refund = payments.refund(order, approvalNo, reason);
+        if (refund.refunded()) {
+            orders.markRefunded(order.id(), refund.refundNo());
+            return;
+        }
+        log.error("환불에 실패했습니다 — 주문 {} 의 결제가 승인 상태로 남습니다: {}",
+                order.orderNo(), refund.message());
     }
 
     private Result placeNew(long logId, String requestId, PlaceAppOrder request) {
@@ -240,7 +286,25 @@ public class AppOrderService {
                 lines,
                 null, null, null, null, null));
 
-        // 4. OMS로 넘깁니다. 여기부터 매장의 일입니다.
+        // 4. 결제 — **OMS로 가기 전**입니다 (§4.10).
+        //
+        //    순서가 요점입니다. 매장이 만들기 시작한 뒤에 결제가 실패하면
+        //    음식은 이미 나가 있습니다. 지금은 무조건 승인이라 차이가
+        //    없지만, 진짜 PG가 붙는 날 이 순서가 이미 맞아 있어야 합니다.
+        var approval = payments.approve(saved);
+        if (!approval.approved()) {
+            orders.changeStatus(saved.id(), AppOrderStatus.PAYMENT_FAILED, "PAY");
+            orders.savePayment(saved.id(), approval.method().name(), saved.totalAmount(),
+                    "REFUSED", null);
+            orders.completeLog(logId, saved.id(), AppOrderStatus.PAYMENT_FAILED.name(),
+                    approval.message());
+            log.info("APP 주문 {} 결제 거절 — {}", saved.orderNo(), approval.message());
+            return Result.refused(OrderRefusal.PAYMENT_REFUSED, approval.message());
+        }
+        orders.savePayment(saved.id(), approval.method().name(), saved.totalAmount(),
+                "APPROVED", approval.approvalNo());
+
+        // 5. OMS로 넘깁니다. 여기부터 매장의 일입니다.
         //
         //    주방은 **첫 줄의 것을 씁니다**. 한 주문의 메뉴들이 서로 다른
         //    주방으로 가야 하는 경우(중식과 일식을 같이 파는 매장)는
@@ -256,6 +320,12 @@ public class AppOrderService {
         }
 
         AppOrderStatus failure = answer.reachable() ? AppOrderStatus.REJECTED : AppOrderStatus.SEND_FAILED;
+        // **돈은 받았는데 주문이 매장에 못 갔습니다 — 돌려줍니다.**
+        //
+        // 썬앤문페이는 가상이지만 현금과 같은 개념이라 실제로 돌려줍니다.
+        // 여기서 안 돌려주면 손님은 돈을 냈고 음식은 없는 상태로 남고,
+        // 그걸 알아채는 길은 손님의 전화뿐입니다.
+        refund(saved, approval.approvalNo(), "매장에 전달하지 못함");
         orders.changeStatus(saved.id(), failure, "OMS");
         orders.completeLog(logId, saved.id(), failure.name(), answer.message());
         log.info("APP 주문 {} 이 OMS에서 {} — {}", saved.orderNo(), failure, answer.message());

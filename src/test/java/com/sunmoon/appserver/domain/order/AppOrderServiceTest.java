@@ -260,6 +260,26 @@ class AppOrderServiceTest {
     }
 
     /**
+     * <b>주방이 줄마다 실려 갑니다</b> (2026-09-18).
+     *
+     * <p>그전에는 주문 전체에 첫 줄의 주방을 붙였습니다. 그래서 첫
+     * 메뉴가 kds-02 것이면 짜장면까지 kds-02 로 갔고, kds-01 은 자기
+     * 것을 못 봤습니다.
+     */
+    @Test
+    void eachLineCarriesItsOwnKitchen() {
+        AppOrderService.Result result = service.place(new PlaceAppOrder(
+                "store-01", null,
+                List.of(new PlaceAppOrder.Item("menu-01", 1),
+                        new PlaceAppOrder.Item("menu-02", 1)),
+                null, "req-1"));
+
+        assertThat(result.order().lines())
+                .extracting(AppOrder.Line::kdsDeviceId)
+                .containsExactly("kds-01", "kds-02");
+    }
+
+    /**
      * 장바구니 — 여러 줄이 한 주문으로 갑니다 (§4.4.2).
      *
      * <p>이게 없던 동안 손님이 두 가지를 시키면 주문이 둘로 갈렸고,
@@ -534,7 +554,9 @@ class AppOrderServiceTest {
             return List.of(
                     new Menu("menu-01", "1메뉴", null, null, "kds-01",
                             new BigDecimal("6000"), 7, soldOut),
-                    new Menu("menu-02", "2메뉴", null, null, "kds-01",
+                    // 일부러 다른 주방입니다 — 한 주문이 두 주방에
+                    // 걸치는 경우를 시험에서 다룹니다.
+                    new Menu("menu-02", "2메뉴", null, null, "kds-02",
                             new BigDecimal("9000"), 7, soldOut || secondSoldOut));
         }
 

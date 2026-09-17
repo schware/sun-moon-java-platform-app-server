@@ -50,6 +50,9 @@ public class HttpOmsGateway implements OmsGateway {
             row.put("quantity", line.quantity());
             row.put("unitPrice", line.unitPrice());
             row.put("lineAmount", line.detailAmount());
+            // 줄마다 주방. 이게 없으면 Order 가 주문 전체에 하나를
+            // 붙이고, 첫 메뉴의 주방이 나머지까지 가져갑니다.
+            row.put("kdsDeviceId", line.kdsDeviceId());
             return row;
         }).toList());
         // 옛 모양도 함께 보냅니다. Order 가 먼저 올라가고 이쪽이 나중에

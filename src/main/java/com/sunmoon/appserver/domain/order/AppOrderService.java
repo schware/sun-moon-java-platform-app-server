@@ -256,9 +256,13 @@ public class AppOrderService {
                 first = item;
             }
             BigDecimal unit = item.price();
+            // 주방을 **줄마다** 답니다. 주문 전체에 첫 줄의 것을 붙이면
+            // 첫 메뉴의 주방이 나머지까지 가져가고, 다른 주방은 자기 것을
+            // 못 봅니다 — 2026-09-18에 매장에서 나온 보고입니다.
             lines.add(new AppOrder.Line(detailSeq++, item.menuCode(), item.name(),
                     ordered.quantity(), unit,
-                    unit.multiply(BigDecimal.valueOf(ordered.quantity()))));
+                    unit.multiply(BigDecimal.valueOf(ordered.quantity())),
+                    item.kdsDeviceId()));
         }
 
         // 3. 채번하고 분해해 저장합니다. 여기까지가 "손님의 요청이
@@ -306,11 +310,9 @@ public class AppOrderService {
 
         // 5. OMS로 넘깁니다. 여기부터 매장의 일입니다.
         //
-        //    주방은 **첫 줄의 것을 씁니다**. 한 주문의 메뉴들이 서로 다른
-        //    주방으로 가야 하는 경우(중식과 일식을 같이 파는 매장)는
-        //    아직 못 다룹니다 — 주문 하나에 주방이 하나라는 전제가
-        //    Order 의 kdsDeviceId 에도 그대로 있습니다. 갈라야 하는 날
-        //    주문을 쪼갤지 줄마다 주방을 달지부터 정해야 합니다.
+        //    주방은 **줄마다** 실려 갑니다 (2026-09-18). 여기 넘기는
+        //    값은 줄에 주방이 안 달린 매장을 위한 기본값입니다 —
+        //    주방이 하나면 전부 그 하나로 갑니다.
         OmsGateway.Answer answer = oms.place(saved, item == null ? null : item.kdsDeviceId());
         if (answer.accepted()) {
             orders.mapToOms(saved.id(), answer.omsOrderNo(), answer.pickupNo(), answer.pickupPin());

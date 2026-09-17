@@ -132,10 +132,11 @@ public class JdbcAppOrderRepository implements AppOrderRepository {
         for (AppOrder.Line line : order.lines()) {
             jdbcTemplate.update("""
                     INSERT INTO app_order_detail
-                      (app_order_id, detail_seq, menu_code, menu_name, quantity, unit_price, detail_amount)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                      (app_order_id, detail_seq, menu_code, menu_name, quantity, unit_price,
+                       detail_amount, kds_device_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, id, line.detailSeq(), line.menuCode(), line.menuName(), line.quantity(),
-                    line.unitPrice(), line.detailAmount());
+                    line.unitPrice(), line.detailAmount(), line.kdsDeviceId());
         }
         insertHistory(id, order.status(), "APP");
 
@@ -262,11 +263,13 @@ public class JdbcAppOrderRepository implements AppOrderRepository {
         return (rs, rowNum) -> {
             long id = rs.getLong("id");
             List<AppOrder.Line> lines = jdbcTemplate.query("""
-                    SELECT detail_seq, menu_code, menu_name, quantity, unit_price, detail_amount
+                    SELECT detail_seq, menu_code, menu_name, quantity, unit_price, detail_amount,
+                           kds_device_id
                       FROM app_order_detail WHERE app_order_id = ? ORDER BY detail_seq
                     """, (r, n) -> new AppOrder.Line(
                     r.getInt("detail_seq"), r.getString("menu_code"), r.getString("menu_name"),
-                    r.getInt("quantity"), r.getBigDecimal("unit_price"), r.getBigDecimal("detail_amount")),
+                    r.getInt("quantity"), r.getBigDecimal("unit_price"), r.getBigDecimal("detail_amount"),
+                    r.getString("kds_device_id")),
                     id);
 
             return new AppOrder(

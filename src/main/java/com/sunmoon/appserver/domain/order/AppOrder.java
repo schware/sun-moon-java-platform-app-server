@@ -60,10 +60,22 @@ public record AppOrder(
             String menuName,
             int quantity,
             BigDecimal unitPrice,
-            BigDecimal detailAmount) {
+            BigDecimal detailAmount,
+            /**
+             * 이 줄을 만드는 주방.
+             *
+             * <p>메뉴 마스터가 정합니다. <b>줄마다</b> 들고 가는 이유:
+             * 주문 하나가 두 주방에 걸칠 수 있습니다 — 중식과 일식을
+             * 같이 파는 매장에서 짜장면과 초밥을 함께 시킨 경우.
+             *
+             * <p>2026-09-18 이전에는 주문 전체에 <b>첫 줄의 주방</b>을
+             * 붙여 보냈고, 그래서 첫 메뉴가 kds-02 것이면 짜장면까지
+             * kds-02 로 갔습니다.
+             */
+            String kdsDeviceId) {
 
         public static Line single(String menuCode, String menuName, BigDecimal unitPrice) {
-            return new Line(1, menuCode, menuName, 1, unitPrice, unitPrice);
+            return new Line(1, menuCode, menuName, 1, unitPrice, unitPrice, null);
         }
     }
 

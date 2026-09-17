@@ -87,6 +87,65 @@ public class AppOrderService {
         return orders.find(id);
     }
 
+    /** BO의 APP 매출 조회가 읽는 것 — 그 매장 그 판매일자의 주문들. */
+    public List<AppOrder> findByDay(String storeId, LocalDate businessDate, OrderChannel channel) {
+        return orders.findByDay(storeId, businessDate, channel);
+    }
+
+    /**
+     * 원장의 상태와 OMS가 보는 상태를 <b>나란히</b> 돌려줍니다 (업무 정의서 §4.5).
+     *
+     * <p>합치지 않는 이유: 축이 다릅니다. 원장은 "손님의 요청이 어떻게
+     * 됐나"이고 OMS는 "매장이 어디까지 했나"입니다. 한 칸으로 뭉개면
+     * OMS에 넣지도 못한 주문(SEND_FAILED)을 표현할 수 없고, 그런
+     * 주문이야말로 가장 잘 보여야 합니다.
+     *
+     * <p>{@code omsStatus} 가 null 이면 아직 안 넘겼거나 OMS를 못 읽은
+     * 것입니다 — 둘 다 원장의 상태가 말해줍니다.
+     */
+    public record Tracked(AppOrder order, String omsStatus) {
+    }
+
+    public Optional<Tracked> track(long id) {
+        return orders.find(id).map(order -> new Tracked(
+                order,
+                order.omsOrderNo() == null ? null : oms.statusOf(order.omsOrderNo()).orElse(null)));
+    }
+
+    /**
+     * 손님이 주문을 무릅니다 (§5.2).
+     *
+     * <p><b>취소 가능 여부는 OMS가 판단합니다.</b> 여기서 상태를 보고
+     * 미리 막지 않는 이유: 수락과 취소가 겹치는 순간이 있고, 그때 APP의
+     * 짐작이 틀리면 두 쪽이 서로 다른 사실을 믿게 됩니다. 판단은 주문을
+     * 소유한 쪽에서 한 번만 합니다.
+     *
+     * <p>OMS가 받아주면 원장도 따라 옮깁니다 — 원장이 손님 화면의
+     * 근거라, 여기가 안 바뀌면 손님은 취소된 주문을 살아 있는 것으로
+     * 계속 봅니다.
+     */
+    public Result cancel(long id) {
+        AppOrder order = orders.find(id).orElse(null);
+        if (order == null) {
+            return Result.refused(OrderRefusal.INVALID_REQUEST);
+        }
+        if (order.omsOrderNo() == null) {
+            // OMS에 넘어가지도 않은 주문입니다. 매장에 일감이 없으므로
+            // 물어볼 곳도 없고, 원장에서 바로 닫습니다.
+            orders.changeStatus(order.id(), AppOrderStatus.CANCELLED, "APP");
+            return Result.of(orders.find(id).orElse(order));
+        }
+
+        OmsGateway.Answer answer = oms.cancel(order.omsOrderNo());
+        if (!answer.accepted()) {
+            return Result.refused(
+                    answer.reachable() ? OrderRefusal.CANCEL_REFUSED : OrderRefusal.OMS_UNREACHABLE,
+                    answer.message());
+        }
+        orders.changeStatus(order.id(), AppOrderStatus.CANCELLED, "OMS");
+        return Result.of(orders.find(id).orElse(order));
+    }
+
     public Result place(PlaceAppOrder request) {
         if (request.menuId() == null || request.menuId().isBlank()) {
             return Result.refused(OrderRefusal.INVALID_REQUEST);

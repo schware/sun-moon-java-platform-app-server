@@ -35,4 +35,24 @@ public interface OmsGateway {
     }
 
     Answer place(AppOrder order, String kdsDeviceId);
+
+    /**
+     * OMS가 보는 지금 상태. APP 원장의 상태와 <b>다른 축</b>이라 합치지
+     * 않고 나란히 보여줍니다 — 원장은 "손님의 요청이 어떻게 됐나"이고
+     * 이쪽은 "매장이 어디까지 했나"입니다.
+     *
+     * <p>못 읽으면 {@code empty} 입니다. 그것 때문에 주문 조회가 통째로
+     * 죽으면 안 됩니다 — 원장은 우리 것이라 항상 읽힙니다.
+     */
+    java.util.Optional<String> statusOf(String omsOrderNo);
+
+    /**
+     * 손님이 취소를 요청했습니다 (업무 정의서 §5.2).
+     *
+     * <p>취소 가능 여부는 <b>OMS가 판단합니다</b>. 매장이 이미 수락했으면
+     * 거절하고, 그 답이 손님에게 갑니다 — APP이 상태를 짐작해서 미리
+     * 막으면, 그 짐작이 틀린 순간(수락과 취소가 겹친 순간) 두 쪽이
+     * 서로 다른 사실을 믿게 됩니다.
+     */
+    Answer cancel(String omsOrderNo);
 }

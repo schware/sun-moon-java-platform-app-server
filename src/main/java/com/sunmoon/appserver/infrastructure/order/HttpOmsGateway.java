@@ -80,6 +80,46 @@ public class HttpOmsGateway implements OmsGateway {
         }
     }
 
+    @Override
+    public java.util.Optional<String> statusOf(String omsOrderNo) {
+        try {
+            String payload = orderClient.get()
+                    .uri(uri -> uri.path("/orders/{id}").build(omsOrderNo))
+                    .retrieve()
+                    .body(String.class);
+            if (payload == null) {
+                return java.util.Optional.empty();
+            }
+            return java.util.Optional.ofNullable(
+                    objectMapper.readTree(payload).path("status").asText(null));
+        } catch (Exception e) {
+            // 못 읽어도 주문 조회는 살아야 합니다 — 원장은 우리 것입니다.
+            log.debug("OMS 주문 {} 의 상태를 읽지 못했습니다", omsOrderNo, e);
+            return java.util.Optional.empty();
+        }
+    }
+
+    @Override
+    public Answer cancel(String omsOrderNo) {
+        try {
+            ResponseEntity<String> response = orderClient.put()
+                    .uri(uri -> uri.path("/orders/{id}/status").build(omsOrderNo))
+                    .header("Content-Type", "application/json")
+                    .body(Map.of("status", "CANCELLED"))
+                    .exchange((request, res) -> ResponseEntity
+                            .status(res.getStatusCode())
+                            .body(new String(res.getBody().readAllBytes(), StandardCharsets.UTF_8)));
+
+            String payload = response.getBody() == null ? "" : response.getBody();
+            return response.getStatusCode().is2xxSuccessful()
+                    ? Answer.accepted(omsOrderNo, null, null)
+                    : Answer.rejected(messageOf(payload));
+        } catch (Exception e) {
+            log.warn("OMS 주문 {} 을 취소하지 못했습니다", omsOrderNo, e);
+            return Answer.unreachable(null);
+        }
+    }
+
     /** OMS의 오류 본문은 {@code {"error": "..."}} 입니다. 아니면 통째로 버립니다. */
     private String messageOf(String payload) {
         try {

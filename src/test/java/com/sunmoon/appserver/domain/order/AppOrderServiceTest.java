@@ -162,6 +162,52 @@ class AppOrderServiceTest {
         assertThat(orders.seqCalls).isZero();
     }
 
+    /**
+     * 취소 가능 여부는 <b>OMS가 판단합니다</b>.
+     *
+     * <p>APP이 상태를 보고 미리 막지 않는 이유: 수락과 취소가 겹치는
+     * 순간이 있고, 그때 APP의 짐작이 틀리면 두 쪽이 서로 다른 사실을
+     * 믿게 됩니다.
+     */
+    @Test
+    void cancellingAsksOmsAndFollowsItsAnswer() {
+        AppOrder placed = service.place(request("req-1")).order();
+
+        AppOrderService.Result result = service.cancel(placed.id());
+
+        assertThat(result.accepted()).isTrue();
+        assertThat(oms.cancelCalls).isEqualTo(1);
+        assertThat(orders.statuses).contains(AppOrderStatus.CANCELLED);
+    }
+
+    @Test
+    void anOrderTheStoreAlreadyTookCannotBeCancelled() {
+        AppOrder placed = service.place(request("req-1")).order();
+        oms.cancelAnswer = OmsGateway.Answer.rejected("이미 수락된 주문입니다");
+
+        AppOrderService.Result result = service.cancel(placed.id());
+
+        assertThat(result.refusal()).isEqualTo(OrderRefusal.CANCEL_REFUSED);
+        assertThat(result.message()).isEqualTo("이미 수락된 주문입니다");
+    }
+
+    /**
+     * OMS에 넘어가지도 않은 주문은 물어볼 곳이 없습니다 — 매장에 일감이
+     * 없으므로 원장에서 바로 닫습니다.
+     */
+    @Test
+    void anOrderThatNeverReachedOmsIsClosedLocally() {
+        oms.answer = OmsGateway.Answer.unreachable(null);
+        service.place(request("req-1"));
+        long id = orders.saved.get(0).id();
+        oms.cancelCalls = 0;
+
+        AppOrderService.Result result = service.cancel(id);
+
+        assertThat(result.accepted()).isTrue();
+        assertThat(oms.cancelCalls).isZero();
+    }
+
     @Test
     void aQrOrderCarriesItsSeatAndIsMarkedAsQrChannel() {
         AppOrderService.Result result = service.place(
@@ -226,13 +272,36 @@ class AppOrderServiceTest {
         public void completeLog(long logId, Long appOrderId, String status, String error) {
         }
 
+        /**
+         * 진짜 저장소는 매핑을 적고, 그 다음 find() 가 그 값을 실어
+         * 돌려줍니다. fake 가 이걸 버리면 "OMS 주문번호가 없는 주문"이
+         * 되어 취소가 원장 안에서만 닫히고, 테스트가 실제와 다른 길을
+         * 걷습니다 — 실제로 그렇게 한 번 어긋났습니다.
+         */
         @Override
         public void mapToOms(long appOrderId, String omsOrderNo, String pickupNo, String pickupPin) {
+            for (int i = 0; i < saved.size(); i++) {
+                AppOrder o = saved.get(i);
+                if (o.id() == appOrderId) {
+                    saved.set(i, new AppOrder(o.id(), o.orderNo(), o.storeId(), o.businessDate(),
+                            o.channel(), o.type(), o.customerId(), o.floor(), o.tableNo(), o.qrCode(),
+                            o.totalAmount(), o.status(), o.lines(), omsOrderNo, pickupNo, pickupPin,
+                            o.placedAt(), o.updatedAt()));
+                }
+            }
         }
 
         @Override
         public Optional<AppOrder> find(long id) {
             return saved.stream().filter(o -> o.id() == id).findFirst();
+        }
+
+        @Override
+        public List<AppOrder> findByDay(String storeId, LocalDate businessDate, OrderChannel channel) {
+            return saved.stream()
+                    .filter(o -> storeId == null || o.storeId().equals(storeId))
+                    .filter(o -> channel == null || o.channel() == channel)
+                    .toList();
         }
     }
 
@@ -285,10 +354,24 @@ class AppOrderServiceTest {
         private Answer answer = Answer.accepted("777", "3-1", "1234");
         private int calls;
 
+        private Answer cancelAnswer = Answer.accepted("777", null, null);
+        private int cancelCalls;
+
         @Override
         public Answer place(AppOrder order, String kdsDeviceId) {
             calls++;
             return answer;
+        }
+
+        @Override
+        public Optional<String> statusOf(String omsOrderNo) {
+            return Optional.of("PLACED");
+        }
+
+        @Override
+        public Answer cancel(String omsOrderNo) {
+            cancelCalls++;
+            return cancelAnswer;
         }
     }
 }

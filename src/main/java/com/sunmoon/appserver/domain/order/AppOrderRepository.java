@@ -1,6 +1,7 @@
 package com.sunmoon.appserver.domain.order;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -51,4 +52,12 @@ public interface AppOrderRepository {
     void mapToOms(long appOrderId, String omsOrderNo, String pickupNo, String pickupPin);
 
     Optional<AppOrder> find(long id);
+
+    /**
+     * 그 매장 그 판매일자의 주문들. {@code channel} 이 null 이면 전부입니다.
+     *
+     * <p>매장을 안 주면 전 매장입니다 — BO의 조회 화면이 "전체"를
+     * 고를 수 있어야 해서입니다.
+     */
+    List<AppOrder> findByDay(String storeId, LocalDate businessDate, OrderChannel channel);
 }

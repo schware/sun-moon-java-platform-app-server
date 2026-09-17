@@ -183,6 +183,27 @@ public class JdbcAppOrderRepository implements AppOrderRepository {
         }
     }
 
+    /**
+     * 조건을 SQL로 쌓습니다. 전부 받아서 자바에서 거르면, 매장이 늘어난
+     * 날 한 매장을 보려고 전 매장의 주문을 실어 나르게 됩니다.
+     */
+    @Override
+    public List<AppOrder> findByDay(String storeId, LocalDate businessDate, OrderChannel channel) {
+        StringBuilder sql = new StringBuilder(SELECT_HEADER).append(" WHERE h.business_date = ?");
+        List<Object> args = new java.util.ArrayList<>();
+        args.add(Date.valueOf(businessDate));
+        if (storeId != null && !storeId.isBlank()) {
+            sql.append(" AND h.store_id = ?");
+            args.add(storeId);
+        }
+        if (channel != null) {
+            sql.append(" AND h.order_channel = ?");
+            args.add(channel.name());
+        }
+        sql.append(" ORDER BY h.id DESC");
+        return jdbcTemplate.query(sql.toString(), headerMapper(), args.toArray());
+    }
+
     @Override
     public Optional<AppOrder> find(long id) {
         List<AppOrder> headers = jdbcTemplate.query(

@@ -67,6 +67,20 @@ public record AppOrder(
         }
     }
 
+    /**
+     * 화면과 매장에 쓸 한 줄 요약 — "짜장면 외 2건".
+     *
+     * <p>Order 의 {@code menuName} 과 같은 규칙입니다. 두 곳이 서로 다른
+     * 문장을 만들면 손님 화면과 POS 화면에 다른 이름이 뜹니다.
+     */
+    public static String summaryOf(List<Line> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return null;
+        }
+        String first = lines.get(0).menuName();
+        return lines.size() == 1 ? first : first + " 외 " + (lines.size() - 1) + "건";
+    }
+
     /** 테이블 QR로 들어온 주문인가 — 가져다 줄 자리가 있는가. */
     public boolean toTable() {
         return tableNo != null;

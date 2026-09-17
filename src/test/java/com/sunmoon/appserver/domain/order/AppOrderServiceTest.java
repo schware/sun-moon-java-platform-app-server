@@ -58,7 +58,7 @@ class AppOrderServiceTest {
     }
 
     private static PlaceAppOrder request(String requestId) {
-        return new PlaceAppOrder("store-01", "menu-01", null, requestId);
+        return PlaceAppOrder.single("store-01", "menu-01", null, requestId);
     }
 
     @Test
@@ -163,6 +163,94 @@ class AppOrderServiceTest {
     }
 
     /**
+     * 장바구니 — 여러 줄이 한 주문으로 갑니다 (§4.4.2).
+     *
+     * <p>이게 없던 동안 손님이 두 가지를 시키면 주문이 둘로 갈렸고,
+     * 수령번호도 둘이었습니다.
+     */
+    @Test
+    void aCartBecomesOneOrderWithSeveralLines() {
+        AppOrderService.Result result = service.place(new PlaceAppOrder(
+                "store-01", null,
+                List.of(new PlaceAppOrder.Item("menu-01", 2),
+                        new PlaceAppOrder.Item("menu-02", 1)),
+                null, "req-cart"));
+
+        assertThat(result.accepted()).isTrue();
+        AppOrder order = result.order();
+        assertThat(order.lines()).hasSize(2);
+        assertThat(order.lines()).extracting(AppOrder.Line::detailSeq).containsExactly(1, 2);
+        // 6000 x 2 + 9000
+        assertThat(order.totalAmount()).isEqualByComparingTo("21000");
+    }
+
+    /**
+     * <b>가격은 서버가 정합니다.</b>
+     *
+     * <p>요청에 가격 칸이 아예 없습니다 — 손님 화면이 보낸 값을 믿으면
+     * 값을 바꿔서 1원에 살 수 있고, 손님이 고르는 동안 가격이 바뀌었을
+     * 수도 있습니다. 맞는 값은 접수되는 순간의 메뉴판 값입니다.
+     */
+    @Test
+    void thePriceComesFromTheMenuBoardNotTheRequest() {
+        AppOrderService.Result result = service.place(new PlaceAppOrder(
+                "store-01", null, List.of(new PlaceAppOrder.Item("menu-01", 3)), null, "req-1"));
+
+        assertThat(result.order().lines().get(0).unitPrice()).isEqualByComparingTo("6000");
+        assertThat(result.order().totalAmount()).isEqualByComparingTo("18000");
+    }
+
+    /**
+     * 결품이 하나면 <b>그 메뉴 이름을 말해 줍니다</b>.
+     *
+     * <p>장바구니에 다섯 줄이 있는데 "주문할 수 없습니다"만 돌려주면
+     * 손님은 하나씩 빼 보는 수밖에 없습니다.
+     */
+    @Test
+    void aSoldOutLineNamesItself() {
+        menus.secondSoldOut = true;
+
+        AppOrderService.Result result = service.place(new PlaceAppOrder(
+                "store-01", null,
+                List.of(new PlaceAppOrder.Item("menu-01", 1),
+                        new PlaceAppOrder.Item("menu-02", 1)),
+                null, "req-1"));
+
+        assertThat(result.refusal()).isEqualTo(OrderRefusal.NOT_ORDERABLE);
+        assertThat(result.message()).contains("2메뉴");
+        // 한 줄이라도 막히면 주문 전체가 안 들어갑니다 — 반쪽짜리
+        // 장바구니를 매장에 보내면 손님은 시키지도 않은 주문을 받습니다.
+        assertThat(orders.saved).isEmpty();
+    }
+
+    /** 같은 메뉴를 두 줄로 보내면 <b>합치지 않습니다</b> — 줄마다 옵션이 붙는 날 되돌릴 수 없습니다. */
+    @Test
+    void theSameMenuTwiceStaysTwoLines() {
+        AppOrderService.Result result = service.place(new PlaceAppOrder(
+                "store-01", null,
+                List.of(new PlaceAppOrder.Item("menu-01", 1),
+                        new PlaceAppOrder.Item("menu-01", 1)),
+                null, "req-1"));
+
+        assertThat(result.order().lines()).hasSize(2);
+    }
+
+    /** 수량을 안 보내거나 0으로 보내면 1입니다 — 아무것도 안 시킨 줄이 남으면 안 됩니다. */
+    @Test
+    void aMissingQuantityIsOne() {
+        assertThat(new PlaceAppOrder.Item("menu-01", 0).quantity()).isEqualTo(1);
+    }
+
+    /** 옛 모양(menuId 하나)도 그대로 받습니다 — 화면과 서버가 한날한시에 안 바뀝니다. */
+    @Test
+    void theOldSingleMenuShapeStillWorks() {
+        AppOrderService.Result result = service.place(request("req-old"));
+
+        assertThat(result.accepted()).isTrue();
+        assertThat(result.order().lines()).hasSize(1);
+    }
+
+    /**
      * 취소 가능 여부는 <b>OMS가 판단합니다</b>.
      *
      * <p>APP이 상태를 보고 미리 막지 않는 이유: 수락과 취소가 겹치는
@@ -211,7 +299,7 @@ class AppOrderServiceTest {
     @Test
     void aQrOrderCarriesItsSeatAndIsMarkedAsQrChannel() {
         AppOrderService.Result result = service.place(
-                new PlaceAppOrder("store-99", "menu-01", "QR-CODE-1", "req-1"));
+                PlaceAppOrder.single("store-99", "menu-01", "QR-CODE-1", "req-1"));
 
         assertThat(result.accepted()).isTrue();
         AppOrder order = result.order();
@@ -307,11 +395,16 @@ class AppOrderServiceTest {
 
     private static final class FakeMenus implements MenuRepository {
         private boolean soldOut;
+        /** menu-02 만 결품인 상태 — 장바구니에서 어느 줄이 막혔는지 가릴 때 씁니다. */
+        private boolean secondSoldOut;
 
         @Override
         public List<Menu> findAll(String storeId, LocalDate on) {
-            return List.of(new Menu("menu-01", "1메뉴", null, null, "kds-01",
-                    new BigDecimal("6000"), 7, soldOut));
+            return List.of(
+                    new Menu("menu-01", "1메뉴", null, null, "kds-01",
+                            new BigDecimal("6000"), 7, soldOut),
+                    new Menu("menu-02", "2메뉴", null, null, "kds-01",
+                            new BigDecimal("9000"), 7, soldOut || secondSoldOut));
         }
 
         @Override

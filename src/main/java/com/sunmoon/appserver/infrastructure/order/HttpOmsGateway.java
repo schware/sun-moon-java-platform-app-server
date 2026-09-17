@@ -36,12 +36,26 @@ public class HttpOmsGateway implements OmsGateway {
 
     @Override
     public Answer place(AppOrder order, String kdsDeviceId) {
-        AppOrder.Line line = order.lines().get(0);
-
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("storeId", order.storeId());
         body.put("customerId", order.customerId());
-        body.put("menuName", line.menuName());
+        // 원장의 줄을 **그대로** 넘깁니다 (§4.4.2). 전에는 첫 줄의
+        // 이름만 보내고 나머지를 버렸습니다 — 원장에는 세 줄이 있는데
+        // 매장에는 한 줄만 간 상태였고, 그 둘이 어긋난 것을 아무도 볼
+        // 수 없었습니다.
+        body.put("lines", order.lines().stream().map(line -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("menuCode", line.menuCode());
+            row.put("menuName", line.menuName());
+            row.put("quantity", line.quantity());
+            row.put("unitPrice", line.unitPrice());
+            row.put("lineAmount", line.detailAmount());
+            return row;
+        }).toList());
+        // 옛 모양도 함께 보냅니다. Order 가 먼저 올라가고 이쪽이 나중에
+        // 올라가는 순서를 강제하지 않기 위해서입니다 — 받는 쪽은 lines
+        // 가 있으면 그것을 쓰고, 없으면 이 둘로 되돌아갑니다.
+        body.put("menuName", com.sunmoon.appserver.domain.order.AppOrder.summaryOf(order.lines()));
         body.put("amount", order.totalAmount());
         body.put("type", order.type().name());
         if (kdsDeviceId != null) {

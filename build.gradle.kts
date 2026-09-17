@@ -36,6 +36,13 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     runtimeOnly("org.postgresql:postgresql")
 
+    // APP 주문 원장이 생기면서 이 서비스도 자기 표를 갖게 됐습니다.
+    // schema.sql 이 아니라 Flyway 인 이유: 이 표들은 거래 데이터라
+    // 앞으로 컬럼이 붙습니다. 기동마다 도는 schema.sql 로는 "무엇이
+    // 언제 바뀌었나"를 알 수 없고, Order 가 이미 같은 이유로 Flyway 입니다.
+    implementation("org.flywaydb:flyway-core")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
+
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
 

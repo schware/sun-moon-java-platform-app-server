@@ -36,6 +36,11 @@ public class MemberService {
     private final MemberRepository members;
     private final Clock clock;
 
+    // 생성자가 둘이면 Spring 은 어느 쪽으로 만들지 모릅니다. 이 계열은
+    // 이것으로 이미 두 번 죽었고(MenuService, BusinessDayService) 이 서비스가
+    // 세 번째였습니다 — 테스트는 전부 통과하고 배포에서만 죽습니다.
+    // 이 어노테이션은 장식이 아니라 동작에 필요한 것입니다.
+    @org.springframework.beans.factory.annotation.Autowired
     public MemberService(MemberRepository members) {
         this(members, Clock.system(SEOUL));
     }

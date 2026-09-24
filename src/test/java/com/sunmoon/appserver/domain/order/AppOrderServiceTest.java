@@ -56,7 +56,11 @@ class AppOrderServiceTest {
                 orders,
                 new MenuService(menus, new FakeQueue()),
                 new TableEntryService(tables, days),
-                days, oms, pay, new ObjectMapper());
+                days, oms, pay,
+                // 회원번호를 안 대는 주문이 이 시험들의 전부입니다 —
+                // 익명이 계속 정상 경로입니다.
+                new com.sunmoon.appserver.domain.member.MemberService(new FakeMembers()),
+                new ObjectMapper());
     }
 
     private static PlaceAppOrder request(String requestId) {
@@ -272,7 +276,7 @@ class AppOrderServiceTest {
                 "store-01", null,
                 List.of(new PlaceAppOrder.Item("menu-01", 1),
                         new PlaceAppOrder.Item("menu-02", 1)),
-                null, "req-1"));
+                null, null, "req-1"));
 
         assertThat(result.order().lines())
                 .extracting(AppOrder.Line::kdsDeviceId)
@@ -291,7 +295,7 @@ class AppOrderServiceTest {
                 "store-01", null,
                 List.of(new PlaceAppOrder.Item("menu-01", 2),
                         new PlaceAppOrder.Item("menu-02", 1)),
-                null, "req-cart"));
+                null, null, "req-cart"));
 
         assertThat(result.accepted()).isTrue();
         AppOrder order = result.order();
@@ -311,7 +315,7 @@ class AppOrderServiceTest {
     @Test
     void thePriceComesFromTheMenuBoardNotTheRequest() {
         AppOrderService.Result result = service.place(new PlaceAppOrder(
-                "store-01", null, List.of(new PlaceAppOrder.Item("menu-01", 3)), null, "req-1"));
+                "store-01", null, List.of(new PlaceAppOrder.Item("menu-01", 3)), null, null, "req-1"));
 
         assertThat(result.order().lines().get(0).unitPrice()).isEqualByComparingTo("6000");
         assertThat(result.order().totalAmount()).isEqualByComparingTo("18000");
@@ -331,7 +335,7 @@ class AppOrderServiceTest {
                 "store-01", null,
                 List.of(new PlaceAppOrder.Item("menu-01", 1),
                         new PlaceAppOrder.Item("menu-02", 1)),
-                null, "req-1"));
+                null, null, "req-1"));
 
         assertThat(result.refusal()).isEqualTo(OrderRefusal.NOT_ORDERABLE);
         assertThat(result.message()).contains("2메뉴");
@@ -347,7 +351,7 @@ class AppOrderServiceTest {
                 "store-01", null,
                 List.of(new PlaceAppOrder.Item("menu-01", 1),
                         new PlaceAppOrder.Item("menu-01", 1)),
-                null, "req-1"));
+                null, null, "req-1"));
 
         assertThat(result.order().lines()).hasSize(2);
     }
@@ -563,6 +567,31 @@ class AppOrderServiceTest {
         @Override
         public Optional<Menu> find(String storeId, String menuCode, LocalDate on) {
             return findAll(storeId, on).stream().filter(m -> m.menuCode().equals(menuCode)).findFirst();
+        }
+    }
+
+    /**
+     * 회원번호 저장소 — 아무것도 발급된 적이 없는 상태입니다.
+     *
+     * <p>그래서 어떤 번호를 대도 "모르는 번호"가 되고, 주문은 익명으로
+     * 들어갑니다. 이 시험들이 확인하는 것이 그 경로라 그게 맞습니다.
+     */
+    private static final class FakeMembers
+            implements com.sunmoon.appserver.domain.member.MemberRepository {
+        private int seq;
+
+        @Override
+        public int nextSeq(java.time.LocalDate businessDate) {
+            return ++seq;
+        }
+
+        @Override
+        public void save(com.sunmoon.appserver.domain.member.Member member) {
+        }
+
+        @Override
+        public java.util.Optional<com.sunmoon.appserver.domain.member.Member> find(String memberNo) {
+            return java.util.Optional.empty();
         }
     }
 

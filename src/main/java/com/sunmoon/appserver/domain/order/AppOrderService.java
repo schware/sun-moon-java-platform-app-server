@@ -57,9 +57,13 @@ public class AppOrderService {
     private final com.sunmoon.appserver.domain.payment.PaymentGateway payments;
     private final ObjectMapper objectMapper;
 
+    /** 회원번호를 확인해 주는 쪽 (§4.1). 손님이 번호를 안 대면 쓰이지 않습니다. */
+    private final com.sunmoon.appserver.domain.member.MemberService members;
+
     public AppOrderService(AppOrderRepository orders, MenuService menus, TableEntryService entries,
                            BusinessDays businessDays, OmsGateway oms,
                            com.sunmoon.appserver.domain.payment.PaymentGateway payments,
+                           com.sunmoon.appserver.domain.member.MemberService members,
                            ObjectMapper objectMapper) {
         this.payments = payments;
         this.orders = orders;
@@ -67,6 +71,7 @@ public class AppOrderService {
         this.entries = entries;
         this.businessDays = businessDays;
         this.oms = oms;
+        this.members = members;
         this.objectMapper = objectMapper;
     }
 
@@ -281,7 +286,12 @@ public class AppOrderService {
                 // 지금 들어오는 주문은 전부 매장 주문입니다. 배달이
                 // 붙는 날 요청에서 받아 옵니다.
                 OrderType.IN_STORE,
-                "guest-" + Long.toString(Math.abs(RANDOM.nextLong()), 36).substring(0, 6),
+                // 손님이 회원번호를 댔고 그것이 우리 번호면 그 값이
+                // 손님의 이름입니다 (§4.1). 아니면 예전처럼 한 번 쓰고
+                // 버리는 값을 지어 붙입니다 — 익명 주문이 계속
+                // 정상이고, 번호는 자격이 아니라 편의입니다.
+                members.customerIdFor(request.memberNo()).orElseGet(
+                        () -> "guest-" + Long.toString(Math.abs(RANDOM.nextLong()), 36).substring(0, 6)),
                 placement.floor(),
                 placement.tableNo(),
                 placement.qrCode(),

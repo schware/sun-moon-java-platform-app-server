@@ -27,6 +27,15 @@ public record PlaceAppOrder(
         /** 새 모양 — 장바구니. */
         List<Item> items,
         String qrCode,
+        /**
+         * 회원번호 (업무 정의서 §4.1). 없어도 됩니다 — 익명 주문이
+         * 계속 정상입니다.
+         *
+         * <p><b>자격이 아니라 편의입니다.</b> 우리 번호가 아니면 주문을
+         * 막지 않고 익명으로 처리합니다. 번호를 잘못 친 손님이 주문을
+         * 못 하게 되면, 도우려고 넣은 값이 장사를 막는 것입니다.
+         */
+        String memberNo,
         String requestId) {
 
     /**
@@ -55,7 +64,7 @@ public record PlaceAppOrder(
 
     /** 한 줄짜리 옛 모양으로 만들기 — 시험과 옛 호출자용. */
     public static PlaceAppOrder single(String storeId, String menuId, String qrCode, String requestId) {
-        return new PlaceAppOrder(storeId, menuId, List.of(), qrCode, requestId);
+        return new PlaceAppOrder(storeId, menuId, List.of(), qrCode, null, requestId);
     }
 
     /**

@@ -1,6 +1,8 @@
 package com.sunmoon.appserver.domain.order;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sunmoon.appserver.domain.payment.AcceptedMethods;
+import com.sunmoon.appserver.domain.payment.PaymentMethod;
 import com.sunmoon.appserver.domain.entry.BusinessDays;
 import com.sunmoon.appserver.domain.entry.TableEntryService;
 import com.sunmoon.appserver.domain.menu.MenuBoard;
@@ -59,12 +61,16 @@ public class AppOrderService {
 
     /** 회원번호를 확인해 주는 쪽 (§4.1). 손님이 번호를 안 대면 쓰이지 않습니다. */
     private final com.sunmoon.appserver.domain.member.MemberService members;
+    /** 이 브랜드가 받기로 한 결제수단 (BO 기준정보). */
+    private final AcceptedMethods acceptedMethods;
 
     public AppOrderService(AppOrderRepository orders, MenuService menus, TableEntryService entries,
                            BusinessDays businessDays, OmsGateway oms,
                            com.sunmoon.appserver.domain.payment.PaymentGateway payments,
+                           AcceptedMethods acceptedMethods,
                            com.sunmoon.appserver.domain.member.MemberService members,
                            ObjectMapper objectMapper) {
+        this.acceptedMethods = acceptedMethods;
         this.payments = payments;
         this.orders = orders;
         this.menus = menus;
@@ -268,6 +274,20 @@ public class AppOrderService {
                     ordered.quantity(), unit,
                     unit.multiply(BigDecimal.valueOf(ordered.quantity())),
                     item.kdsDeviceId()));
+        }
+
+        // 2½. 이 매장이 지금 이 결제수단을 받는가 (BO 기준정보 → 결제수단).
+        //
+        //    **원장에 쓰기 전에** 봅니다. 메뉴가 없거나 결품이면 여기 앞에서
+        //    막는 것과 같은 자리입니다 — 받지 않을 주문을 원장에 적어 두면
+        //    PAYMENT_FAILED 줄만 쌓이고, 승인도 환불도 없는 건을 나중에 누가
+        //    왜 있는지 물어야 합니다.
+        //
+        //    목록을 못 읽으면(UNKNOWN) 받습니다. 모르는 것과 꺼진 것은
+        //    다르고, 모르는 채로 막으면 장사가 멈춥니다.
+        if (acceptedMethods.of(PaymentMethod.SUNMOON_PAY) == AcceptedMethods.Acceptance.DISABLED) {
+            orders.completeLog(logId, null, "REFUSED", OrderRefusal.PAYMENT_METHOD_DISABLED.name());
+            return Result.refused(OrderRefusal.PAYMENT_METHOD_DISABLED);
         }
 
         // 3. 채번하고 분해해 저장합니다. 여기까지가 "손님의 요청이

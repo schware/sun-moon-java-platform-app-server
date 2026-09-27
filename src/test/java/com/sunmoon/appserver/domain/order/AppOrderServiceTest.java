@@ -42,6 +42,8 @@ class AppOrderServiceTest {
     private FakeBusinessDays days;
     private FakeOms oms;
     private FakePay pay;
+    /** 결제수단 목록의 답. 기본은 켜져 있음 — 나머지 시험들은 결제수단 얘기가 아닙니다. */
+    private com.sunmoon.appserver.domain.payment.AcceptedMethods.Acceptance acceptance;
     private AppOrderService service;
 
     @BeforeEach
@@ -52,15 +54,45 @@ class AppOrderServiceTest {
         days = new FakeBusinessDays();
         oms = new FakeOms();
         pay = new FakePay();
+        acceptance = com.sunmoon.appserver.domain.payment.AcceptedMethods.Acceptance.ACCEPTED;
         service = new AppOrderService(
                 orders,
                 new MenuService(menus, new FakeQueue()),
                 new TableEntryService(tables, days),
                 days, oms, pay,
+                method -> acceptance,
                 // 회원번호를 안 대는 주문이 이 시험들의 전부입니다 —
                 // 익명이 계속 정상 경로입니다.
                 new com.sunmoon.appserver.domain.member.MemberService(new FakeMembers()),
                 new ObjectMapper());
+    }
+
+    // ---- 결제수단 (BO 기준정보, 2026-09-27) ----------------------------
+
+    @Test
+    void 결제수단이_꺼져_있으면_원장에_쓰기_전에_막는다() {
+        acceptance = com.sunmoon.appserver.domain.payment.AcceptedMethods.Acceptance.DISABLED;
+
+        AppOrderService.Result result = service.place(request("req-off"));
+
+        assertThat(result.refusal()).isEqualTo(OrderRefusal.PAYMENT_METHOD_DISABLED);
+        // 원장에 아무것도 없어야 합니다 — 받지 않을 주문을 적어 두면
+        // 승인도 환불도 없는 PAYMENT_FAILED 줄만 쌓입니다.
+        assertThat(orders.saved).isEmpty();
+        // 결제를 시도하지도, 매장에 보내지도 않았어야 합니다.
+        assertThat(pay.approvedOrders).isEmpty();
+        assertThat(oms.calls).isZero();
+    }
+
+    @Test
+    void 결제수단_목록을_못_읽으면_받는다() {
+        // 모르는 것과 꺼진 것은 다릅니다. 모르는 채로 막으면 기준정보를
+        // 읽는 길 하나가 장사 전체를 멈춥니다.
+        acceptance = com.sunmoon.appserver.domain.payment.AcceptedMethods.Acceptance.UNKNOWN;
+
+        AppOrderService.Result result = service.place(request("req-unknown"));
+
+        assertThat(result.accepted()).isTrue();
     }
 
     private static PlaceAppOrder request(String requestId) {

@@ -131,6 +131,20 @@ class AppOrderServiceTest {
         assertThat(oms.calls).isEqualTo(1);
     }
 
+    /**
+     * 승인된 결제가 주문과 함께 매장으로 갑니다 (store-app.md §6.2) — POS 가 거래 전문의
+     * 결제로 적는 값입니다. 그동안 결제가 POS 를 안 지나가서 매출의 결제가 비어 있었습니다.
+     */
+    @Test
+    void theApprovedPaymentTravelsWithTheOrder() {
+        AppOrderService.Result result = service.place(request("req-paid"));
+
+        assertThat(result.accepted()).isTrue();
+        assertThat(oms.lastPaid).isNotNull();
+        assertThat(oms.lastPaid.approvalNo()).isNotBlank();
+        assertThat(oms.lastPaid.amount()).isEqualByComparingTo(result.order().totalAmount());
+    }
+
     @Test
     void differentRequestIdsAreDifferentOrders() {
         service.place(request("req-1"));
@@ -695,9 +709,12 @@ class AppOrderServiceTest {
         private Answer cancelAnswer = Answer.accepted("777", null, null);
         private int cancelCalls;
 
+        private Paid lastPaid;
+
         @Override
-        public Answer place(AppOrder order, String kdsDeviceId) {
+        public Answer place(AppOrder order, String kdsDeviceId, Paid paid) {
             calls++;
+            lastPaid = paid;
             return answer;
         }
 

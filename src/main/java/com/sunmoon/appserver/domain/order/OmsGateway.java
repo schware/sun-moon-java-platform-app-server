@@ -34,7 +34,20 @@ public interface OmsGateway {
         }
     }
 
-    Answer place(AppOrder order, String kdsDeviceId);
+    /**
+     * 승인된 결제 — OMS 에 주문과 함께 실어 POS 까지 갑니다 (umbrella store-app.md §6.2).
+     * POS 가 거래 전문의 {@code payments} 에 이것을 적습니다. 결제가 POS 를 안 지나가서
+     * 그동안 비어 있던 자리입니다.
+     */
+    record Paid(String method, String approvalNo, java.math.BigDecimal amount) {
+    }
+
+    /** @param paid 승인된 결제. null 이면 결제 없이 (옛 호출자). */
+    Answer place(AppOrder order, String kdsDeviceId, Paid paid);
+
+    default Answer place(AppOrder order, String kdsDeviceId) {
+        return place(order, kdsDeviceId, null);
+    }
 
     /**
      * OMS가 보는 지금 상태. APP 원장의 상태와 <b>다른 축</b>이라 합치지

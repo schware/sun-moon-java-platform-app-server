@@ -343,7 +343,9 @@ public class AppOrderService {
         //    주방은 **줄마다** 실려 갑니다 (2026-09-18). 여기 넘기는
         //    값은 줄에 주방이 안 달린 매장을 위한 기본값입니다 —
         //    주방이 하나면 전부 그 하나로 갑니다.
-        OmsGateway.Answer answer = oms.place(saved, item == null ? null : item.kdsDeviceId());
+        OmsGateway.Answer answer = oms.place(saved, item == null ? null : item.kdsDeviceId(),
+                // 승인 결과를 매장까지 — POS 가 거래 전문의 결제로 적습니다 (store-app.md §6.2).
+                new OmsGateway.Paid(approval.method().name(), approval.approvalNo(), saved.totalAmount()));
         if (answer.accepted()) {
             orders.mapToOms(saved.id(), answer.omsOrderNo(), answer.pickupNo(), answer.pickupPin());
             orders.changeStatus(saved.id(), AppOrderStatus.SENT, "OMS");

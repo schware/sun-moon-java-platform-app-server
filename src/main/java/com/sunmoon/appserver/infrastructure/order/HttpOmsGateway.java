@@ -35,7 +35,7 @@ public class HttpOmsGateway implements OmsGateway {
     }
 
     @Override
-    public Answer place(AppOrder order, String kdsDeviceId) {
+    public Answer place(AppOrder order, String kdsDeviceId, Paid paid) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("storeId", order.storeId());
         body.put("customerId", order.customerId());
@@ -61,6 +61,13 @@ public class HttpOmsGateway implements OmsGateway {
         body.put("menuName", com.sunmoon.appserver.domain.order.AppOrder.summaryOf(order.lines()));
         body.put("amount", order.totalAmount());
         body.put("type", order.type().name());
+        if (paid != null) {
+            Map<String, Object> payment = new LinkedHashMap<>();
+            payment.put("method", paid.method());
+            payment.put("approvalNo", paid.approvalNo());
+            payment.put("amount", paid.amount());
+            body.put("payment", payment);
+        }
         if (kdsDeviceId != null) {
             body.put("kdsDeviceId", kdsDeviceId);
         }

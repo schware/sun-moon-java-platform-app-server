@@ -34,6 +34,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    // 손님 앱 푸시(A4): order-events 구독. Order 가 내는 쪽과 같은 라이브러리.
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
     runtimeOnly("org.postgresql:postgresql")
 
     // APP 주문 원장이 생기면서 이 서비스도 자기 표를 갖게 됐습니다.

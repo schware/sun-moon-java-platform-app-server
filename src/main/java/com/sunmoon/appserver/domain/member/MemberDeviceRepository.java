@@ -22,4 +22,8 @@ public interface MemberDeviceRepository {
 
     /** 회원의 살아 있는 기기들의 푸시 토큰 (A4). */
     List<String> pushTokens(String memberNo);
+
+    /** FCM 이 "없는 토큰" 이라고 한 것 — 앱이 지워진 기기. */
+    default void clearPushToken(String pushToken) {
+    }
 }

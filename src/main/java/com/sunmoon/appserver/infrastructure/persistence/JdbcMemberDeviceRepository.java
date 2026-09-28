@@ -57,6 +57,11 @@ public class JdbcMemberDeviceRepository implements MemberDeviceRepository {
     }
 
     @Override
+    public void clearPushToken(String pushToken) {
+        jdbcTemplate.update("UPDATE member_device SET push_token = NULL WHERE push_token = ?", pushToken);
+    }
+
+    @Override
     public List<String> pushTokens(String memberNo) {
         return jdbcTemplate.queryForList(
                 "SELECT push_token FROM member_device WHERE member_no = ? AND revoked_at IS NULL AND push_token IS NOT NULL",

@@ -6,6 +6,11 @@ server:
 spring:
   application:
     name: sun-moon-java-platform-app-server
+  # 손님 앱 푸시(A4)가 order-events 를 들을 Redis. 구독은 PUSH_EVENTS_REDIS=true 일 때만.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   datasource:
     url: jdbc:postgresql://localhost:5432/app_server
     username: sunmoon
@@ -39,6 +44,10 @@ management:
   endpoint:
     health:
       show-details: always
+  # 푸시는 곁가지라, Redis 가 없다고 이 서비스를 DOWN 으로 보이면 안 됩니다.
+  health:
+    redis:
+      enabled: false
 
 # 이 서버가 HTTP로 읽는 유일한 곳 — 매장 영업 상태(개점/마감)입니다.
 # 기준 정보가 아니라 운영 상태라 소유자(OMS)에게 직접 물어봅니다.
@@ -49,3 +58,11 @@ management:
 app-server:
   order:
     base-url: ${ORDER_SERVICE_URL:http://localhost:8083/order}
+
+# 손님 앱 푸시 (customer-app.md §4). 둘 다 설정이 있어야만 켜집니다 — 없는 서버에서 죽지 않게.
+app:
+  push:
+    events-redis: ${PUSH_EVENTS_REDIS:false}
+    fcm:
+      project-id: ${FCM_PROJECT_ID:}
+      credentials-file: ${FCM_CREDENTIALS_FILE:}

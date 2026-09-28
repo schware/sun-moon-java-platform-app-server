@@ -348,6 +348,9 @@ public class AppOrderService {
                 new OmsGateway.Paid(approval.method().name(), approval.approvalNo(), saved.totalAmount()));
         if (answer.accepted()) {
             orders.mapToOms(saved.id(), answer.omsOrderNo(), answer.pickupNo(), answer.pickupPin());
+            if (answer.claimToken() != null) {
+                orders.saveClaimToken(saved.id(), answer.claimToken());
+            }
             orders.changeStatus(saved.id(), AppOrderStatus.SENT, "OMS");
             orders.completeLog(logId, saved.id(), "SENT", null);
             return Result.of(orders.find(saved.id()).orElse(saved));

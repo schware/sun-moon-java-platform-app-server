@@ -70,6 +70,14 @@ public final class MemberNo {
      * 모양과 검증숫자가 맞는가. <b>발급된 번호인지는 묻지 않습니다</b> —
      * 그건 표가 답할 질문이고, 이 검사는 그 앞에 섭니다.
      */
+    /** 로그용 — 앞 여섯 자리(발급일)만. 번호가 로그로 새지 않게. */
+    public static String masked(String memberNo) {
+        if (memberNo == null || memberNo.length() < 6) {
+            return "?";
+        }
+        return memberNo.substring(0, 6) + "*".repeat(memberNo.length() - 6);
+    }
+
     public static boolean looksValid(String memberNo) {
         if (memberNo == null || memberNo.length() != LENGTH) {
             return false;

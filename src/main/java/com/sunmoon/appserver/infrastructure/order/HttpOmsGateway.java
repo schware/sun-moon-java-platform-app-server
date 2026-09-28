@@ -96,11 +96,27 @@ public class HttpOmsGateway implements OmsGateway {
             return Answer.accepted(
                     node.path("id").asText(null),
                     node.path("pickupNo").asText(null),
-                    node.path("pickupPin").asText(null));
+                    node.path("pickupPin").asText(null),
+                    node.path("claimToken").asText(null));
         } catch (Exception e) {
             // 닿지 못한 것. 거절과 갈라야 재처리 대상이 정해집니다.
             log.warn("OMS에 주문 {} 을 넘기지 못했습니다", order.orderNo(), e);
             return Answer.unreachable(null);
+        }
+    }
+
+    @Override
+    public java.util.Optional<String> claimOwner(String claimToken) {
+        try {
+            String payload = orderClient.get()
+                    .uri(uri -> uri.path("/orders/claim/{token}/owner").build(claimToken))
+                    .retrieve()
+                    .body(String.class);
+            return payload == null ? java.util.Optional.empty()
+                    : java.util.Optional.ofNullable(objectMapper.readTree(payload).path("customerId").asText(null));
+        } catch (Exception notFoundOrUnreachable) {
+            // 404(모르는 영수증)와 못 닿음을 가르지 않습니다 — 둘 다 "연결하지 않는다" 입니다.
+            return java.util.Optional.empty();
         }
     }
 

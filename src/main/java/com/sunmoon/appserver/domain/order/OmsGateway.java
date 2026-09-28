@@ -19,19 +19,32 @@ public interface OmsGateway {
      * @param message    손님에게 보여줄 문장. 거절 사유는 OMS가 압니다.
      */
     record Answer(boolean accepted, boolean reachable, String omsOrderNo,
-                  String pickupNo, String pickupPin, String message) {
+                  String pickupNo, String pickupPin, String message, String claimToken) {
 
         public static Answer accepted(String omsOrderNo, String pickupNo, String pickupPin) {
-            return new Answer(true, true, omsOrderNo, pickupNo, pickupPin, null);
+            return accepted(omsOrderNo, pickupNo, pickupPin, null);
+        }
+
+        /** @param claimToken 영수증 QR 토큰 — 원장에서 주문 상태 화면으로 가는 열쇠 (customer-app §3.3) */
+        public static Answer accepted(String omsOrderNo, String pickupNo, String pickupPin, String claimToken) {
+            return new Answer(true, true, omsOrderNo, pickupNo, pickupPin, null, claimToken);
         }
 
         public static Answer rejected(String message) {
-            return new Answer(false, true, null, null, null, message);
+            return new Answer(false, true, null, null, null, message, null);
         }
 
         public static Answer unreachable(String message) {
-            return new Answer(false, false, null, null, null, message);
+            return new Answer(false, false, null, null, null, message, null);
         }
+    }
+
+    /**
+     * 영수증 QR 토큰이 가리키는 주문의 손님 (OMS {@code GET /orders/claim/{token}/owner}, LAN 전용).
+     * 회원 기기를 영수증으로 연결할 때만 씁니다. 모르면 비어 있음.
+     */
+    default java.util.Optional<String> claimOwner(String claimToken) {
+        return java.util.Optional.empty();
     }
 
     /**

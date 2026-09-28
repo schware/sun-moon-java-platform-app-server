@@ -51,6 +51,10 @@ public interface AppOrderRepository {
      */
     void mapToOms(long appOrderId, String omsOrderNo, String pickupNo, String pickupPin);
 
+    /** OMS 가 돌려준 영수증 QR 토큰 (V4). 이력에서 주문 상태 화면으로 가는 열쇠입니다. */
+    default void saveClaimToken(long appOrderId, String claimToken) {
+    }
+
     Optional<AppOrder> find(long id);
 
     /**

@@ -171,6 +171,12 @@ public class JdbcAppOrderRepository implements AppOrderRepository {
      * 다른 값이면 그때는 진짜 사고이므로 던집니다.
      */
     @Override
+    public void saveClaimToken(long appOrderId, String claimToken) {
+        jdbcTemplate.update("UPDATE app_oms_order_map SET claim_token = ? WHERE app_order_id = ?",
+                claimToken, appOrderId);
+    }
+
+    @Override
     public void mapToOms(long appOrderId, String omsOrderNo, String pickupNo, String pickupPin) {
         try {
             jdbcTemplate.update("""

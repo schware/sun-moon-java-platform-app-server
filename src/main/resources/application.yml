@@ -14,7 +14,8 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/app_server
     username: sunmoon
-    password: sunmoon_dev_pw
+    # 비밀번호는 저장소에 두지 않습니다 — 실행 설정의 SPRING_DATASOURCE_PASSWORD (서버: /srv/sunmoon/env/*.env).
+    password: ${SPRING_DATASOURCE_PASSWORD:}
   flyway:
     enabled: true
     # 이 데이터베이스는 비어 있지 않습니다 — fdw 외부 테이블과 뷰가

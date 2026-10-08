@@ -210,6 +210,36 @@ public class JdbcAppOrderRepository implements AppOrderRepository {
     }
 
     @Override
+    public List<ChannelCheck> recentForChannelCheck(String storeId) {
+        // 매장마다 원장의 최근 영업일 둘. 결제는 승인·환불된 마지막 한 줄 — 환불되면 approval_ref 가
+        // "승인번호 / 환불번호" 가 되므로 앞부분만 씁니다(markRefunded).
+        String sql = """
+                SELECT h.id, h.order_no, h.store_id, h.business_date, h.status, h.updated_at,
+                       m.oms_order_no,
+                       split_part(p.approval_ref, ' / ', 1) AS approval_no,
+                       p.payment_status
+                  FROM app_order_header h
+                  LEFT JOIN app_oms_order_map m ON m.app_order_id = h.id
+                  LEFT JOIN LATERAL (SELECT approval_ref, payment_status FROM app_order_payment
+                                      WHERE app_order_id = h.id AND payment_status IN ('APPROVED', 'REFUNDED')
+                                      ORDER BY payment_seq DESC LIMIT 1) p ON true
+                 WHERE h.status IN ('SENT', 'SEND_FAILED', 'REJECTED', 'CANCELLED')
+                   AND h.business_date IN (SELECT DISTINCT h2.business_date FROM app_order_header h2
+                                            WHERE h2.store_id = h.store_id
+                                            ORDER BY h2.business_date DESC LIMIT 2)
+                """;
+        RowMapper<ChannelCheck> mapper = (rs, n) -> new ChannelCheck(
+                rs.getLong("id"), rs.getString("order_no"), rs.getString("store_id"),
+                rs.getDate("business_date").toLocalDate(), AppOrderStatus.valueOf(rs.getString("status")),
+                rs.getString("oms_order_no"), rs.getString("approval_no"), rs.getString("payment_status"),
+                rs.getTimestamp("updated_at").toInstant());
+        if (storeId == null || storeId.isBlank()) {
+            return jdbcTemplate.query(sql + " ORDER BY h.id", mapper);
+        }
+        return jdbcTemplate.query(sql + " AND h.store_id = ? ORDER BY h.id", mapper, storeId);
+    }
+
+    @Override
     public java.util.Optional<String> unrefundedApprovalOf(long appOrderId) {
         return jdbcTemplate.query("""
                 SELECT approval_ref FROM app_order_payment

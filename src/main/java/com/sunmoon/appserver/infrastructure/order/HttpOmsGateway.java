@@ -160,6 +160,30 @@ public class HttpOmsGateway implements OmsGateway {
         }
     }
 
+    @Override
+    public java.util.Optional<java.util.List<Digest>> digestSince(java.time.LocalDate since) {
+        try {
+            String payload = orderClient.get()
+                    .uri(uri -> uri.path("/orders/digest").queryParam("since", since.toString()).build())
+                    .retrieve()
+                    .body(String.class);
+            java.util.List<Digest> rows = new java.util.ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode node : objectMapper.readTree(payload == null ? "[]" : payload)) {
+                rows.add(new Digest(
+                        node.path("id").asText(null),
+                        node.path("storeId").asText(null),
+                        node.hasNonNull("businessDate") ? java.time.LocalDate.parse(node.path("businessDate").asText()) : null,
+                        node.path("status").asText(null),
+                        node.path("approvalNo").asText(null)));
+            }
+            return java.util.Optional.of(rows);
+        } catch (Exception e) {
+            // 비교할 수 없다는 것을 부르는 쪽이 화면에 보입니다 — 빈 목록으로 돌려주면 "어긋남 없음" 이 됩니다.
+            log.warn("OMS 주문 요약을 읽지 못했습니다 (since {})", since, e);
+            return java.util.Optional.empty();
+        }
+    }
+
     /** OMS의 오류 본문은 {@code {"error": "..."}} 입니다. 아니면 통째로 버립니다. */
     private String messageOf(String payload) {
         try {

@@ -49,7 +49,7 @@ dependencies {
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
 
     // 실패 재처리의 틀 — BO 재처리 화면이 Device Server·Order 와 같은 모양으로 읽습니다.
-    implementation("com.sunmoon:sun-moon-reprocess:0.1.0")
+    implementation("com.sunmoon:sun-moon-reprocess:0.2.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }

@@ -81,4 +81,23 @@ public interface OmsGateway {
      * 서로 다른 사실을 믿게 됩니다.
      */
     Answer cancel(String omsOrderNo);
+
+    /**
+     * OMS 주문 요약 한 줄 — 원장과 맞춰 보는 데 필요한 것만 (업무 정의서 §5.8 "OMS와 채널 간 상태 정합성 비교").
+     *
+     * @param approvalNo 우리가 승인해 실어 보낸 승인번호. 원장에 OMS 주문번호가 없는 건(전달 실패)을 찾는 열쇠입니다.
+     */
+    record Digest(String omsOrderNo, String storeId, java.time.LocalDate businessDate,
+                  String status, String approvalNo) {
+    }
+
+    /**
+     * 이 영업일부터의 OMS 주문 요약 — 주문마다 묻지 않고 한 번에.
+     *
+     * <p>못 읽으면 {@code empty} 입니다. <b>"어긋난 것이 없다" 가 아니라 "비교할 수 없다"</b> 이고, 부르는 쪽은 그렇게
+     * 보여야 합니다.
+     */
+    default java.util.Optional<java.util.List<Digest>> digestSince(java.time.LocalDate since) {
+        return java.util.Optional.empty();
+    }
 }

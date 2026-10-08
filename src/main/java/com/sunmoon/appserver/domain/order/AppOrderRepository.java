@@ -96,4 +96,25 @@ public interface AppOrderRepository {
      * 가상 결제라도 그건 장부가 안 맞는 일입니다.
      */
     java.util.Optional<String> unrefundedApprovalOf(long appOrderId);
+
+    /**
+     * OMS 와 맞춰 볼 원장 한 줄 (업무 정의서 §5.8, §4.4.6).
+     *
+     * @param omsOrderNo    OMS 가 접수했을 때 받은 번호 — 전달 실패면 없음
+     * @param approvalNo    결제 승인번호(환불됐어도 승인 때의 번호)
+     * @param paymentStatus {@code APPROVED} · {@code REFUNDED}, 결제가 없으면 null
+     */
+    record ChannelCheck(long id, String orderNo, String storeId, LocalDate businessDate, AppOrderStatus status,
+                        String omsOrderNo, String approvalNo, String paymentStatus, java.time.Instant updatedAt) {
+    }
+
+    /**
+     * 매장마다 원장의 최근 영업일 둘(오늘·어제) 안에서, OMS 와 어긋날 수 있는 상태의 주문
+     * (SENT · SEND_FAILED · REJECTED · CANCELLED).
+     *
+     * @param storeId null 이면 전 매장
+     */
+    default List<ChannelCheck> recentForChannelCheck(String storeId) {
+        return List.of();
+    }
 }
